@@ -1,0 +1,44 @@
+# Virtual environments
+venv/
+venv310/
+venv310_win/
+venv311/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+
+# Logs
+*.log
+*.err.log
+
+# Database
+database.db
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules (if any)
+node_modules/
+
+# Build outputs
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.temp
