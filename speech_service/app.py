@@ -23,6 +23,14 @@ except ImportError as exc:  # pragma: no cover - import failure handled at start
         "openai-whisper is not installed. Create the Python 3.10 speech-service environment first."
     ) from exc
 
+try:
+    import nemo
+    import nemo.collections.asr as nemo_asr
+    from nemo.core.classes import ModelPT
+    NEMO_AVAILABLE = True
+except ImportError:
+    NEMO_AVAILABLE = False
+
 
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL_NAME", "base")
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "en")
@@ -128,6 +136,19 @@ def get_whisper_model():
     logger.info("Whisper model loaded successfully")
     return model
 
+@lru_cache(maxsize=1)
+def get_nemo_model():
+    if not NEMO_AVAILABLE:
+        return None
+    try:
+        logger.info("Loading Nemo QuartzNet model")
+        model = nemo_asr.models.EncDecCTCModel.from_pretrained(model_name="stt_en_quartznet15x5_base")
+        logger.info("Nemo model loaded successfully")
+        return model
+    except Exception as e:
+        logger.warning(f"Nemo model loading failed: {e}")
+        return None
+
 
 def convert_audio_to_wav(source_path: str | Path, wav_path: str | Path) -> None:
     command = [
@@ -173,20 +194,59 @@ def polish_transcript(text: str) -> str:
     return polished
 
 
+def transcribe_with_whisper(audio_path: str | Path) -> str:
+    try:
+        result = get_whisper_model().transcribe(
+            str(audio_path),
+            fp16=False,
+            language=WHISPER_LANGUAGE,
+            temperature=0.0,
+            best_of=1,
+            beam_size=1,
+            initial_prompt=(
+                "Technical interview answer. Terms may include encapsulation, inheritance, "
+                "polymorphism, abstraction, REST API, microservices, algorithm, database, framework, API."
+            ),
+        )
+        return polish_transcript(apply_technical_corrections(result.get("text", "")))
+    except Exception as e:
+        logger.error(f"Whisper transcription failed: {e}")
+        return ""
+
+def transcribe_with_nemo(audio_path: str | Path) -> str:
+    if not NEMO_AVAILABLE:
+        return ""
+    try:
+        model = get_nemo_model()
+        if not model:
+            return ""
+        
+        # Convert audio to the format Nemo expects
+        import torch
+        import librosa
+        
+        # Load and preprocess audio
+        audio, sample_rate = librosa.load(str(audio_path), sr=16000)
+        audio_tensor = torch.from_numpy(audio).unsqueeze(0)
+        
+        # Transcribe
+        transcription = model.transcribe([audio_tensor])
+        text = transcription[0] if transcription else ""
+        
+        return polish_transcript(apply_technical_corrections(text))
+    except Exception as e:
+        logger.error(f"Nemo transcription failed: {e}")
+        return ""
+
 def transcribe_audio(audio_path: str | Path) -> str:
-    result = get_whisper_model().transcribe(
-        str(audio_path),
-        fp16=False,
-        language=WHISPER_LANGUAGE,
-        temperature=0.0,
-        best_of=1,
-        beam_size=1,
-        initial_prompt=(
-            "Technical interview answer. Terms may include encapsulation, inheritance, "
-            "polymorphism, abstraction, REST API, microservices, algorithm, database, framework, API."
-        ),
-    )
-    text = polish_transcript(apply_technical_corrections(result.get("text", "")))
+    # Try Whisper first
+    text = transcribe_with_whisper(audio_path)
+    
+    # If Whisper fails or returns empty, try Nemo as fallback
+    if not text or len(text.strip()) < 3:
+        logger.info("Whisper failed, trying Nemo as fallback")
+        text = transcribe_with_nemo(audio_path)
+    
     if len(text.strip()) < 3:
         raise HTTPException(status_code=422, detail="No usable speech detected. Please repeat the answer.")
     return text
@@ -194,7 +254,35 @@ def transcribe_audio(audio_path: str | Path) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": WHISPER_MODEL_NAME, "service": "speech_service"}
+    return {
+        "status": "ok", 
+        "whisper_model": WHISPER_MODEL_NAME,
+        "nemo_available": NEMO_AVAILABLE,
+        "service": "speech_service"
+    }
+
+@app.get("/test")
+def test_models():
+    results = {}
+    
+    # Test Whisper
+    try:
+        whisper_model = get_whisper_model()
+        results["whisper"] = {"status": "loaded", "model": WHISPER_MODEL_NAME}
+    except Exception as e:
+        results["whisper"] = {"status": "error", "error": str(e)}
+    
+    # Test Nemo
+    if NEMO_AVAILABLE:
+        try:
+            nemo_model = get_nemo_model()
+            results["nemo"] = {"status": "loaded", "model": "QuartzNet15x5"}
+        except Exception as e:
+            results["nemo"] = {"status": "error", "error": str(e)}
+    else:
+        results["nemo"] = {"status": "not_available"}
+    
+    return {"models": results}
 
 
 @app.post("/transcribe")

@@ -19,7 +19,7 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
     def __post_init__(self) -> None:
-        origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+        origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:52900,http://127.0.0.1:5000")
         self.cors_origins = [origin.strip() for origin in origins.split(",") if origin.strip()]
 
 

@@ -12,3 +12,6 @@ openpyxl
 PyPDF2
 requests
 ffmpeg-python
+nemo-toolkit[asr]
+librosa
+soundfile

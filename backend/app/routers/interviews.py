@@ -14,6 +14,24 @@ from app.services.voice_handler import voice_handler
 router = APIRouter(tags=["interviews"])
 
 
+@router.get("/interviews/{session_id}")
+def get_interview_session(
+    session_id: str,
+    repository=Depends(get_repository),
+):
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    current_question = repository.get_current_question(session_id)
+    
+    return {
+        "session_id": session_id,
+        "session": session,
+        "current_question": current_question,
+    }
+
+
 @router.post("/interviews/{session_id}/answer")
 def submit_answer(
     session_id: str,

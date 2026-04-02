@@ -1217,7 +1217,9 @@ async function initInterview(){
   }, 150);
 }
 
-window.onload = function(){ initInterview(); };
+window.onload = function(){ 
+  initInterview(); 
+};
 window.speechSynthesis.onvoiceschanged = function(){ window.speechSynthesis.getVoices(); };
 document.addEventListener("click", function(){
   if (!audioBlocked) return;
